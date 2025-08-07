@@ -9,7 +9,10 @@ from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.peewee.package import _instruments
 from opentelemetry.instrumentation.peewee.version import __version__
 from opentelemetry.instrumentation.sqlcommenter_utils import _add_sql_comment
-from opentelemetry.instrumentation.utils import _get_opentelemetry_values
+from opentelemetry.instrumentation.utils import (
+    _get_opentelemetry_values,
+    is_instrumentation_enabled,
+)
 from opentelemetry.semconv.metrics import MetricInstruments
 from opentelemetry.semconv.trace import SpanAttributes
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -119,6 +122,9 @@ def _wrap_execute_sql(
 
     @wraps(original_execute)
     def execute_sql(self, sql, params=None, commit=SENTINEL):
+        if not is_instrumentation_enabled():
+            return original_execute(self, sql, params, commit)
+
         start = default_timer()
         database = self.database
         vendor = _normalize_vendor(self.__class__.__name__)
@@ -194,6 +200,9 @@ def _wrap_connect(tracer, active_connections):
 
     @wraps(original_connect)
     def connect(self, reuse_if_open=False):
+        if not is_instrumentation_enabled():
+            return original_connect(self, reuse_if_open)
+
         with tracer.start_as_current_span(
                 "connect", kind=SpanKind.CLIENT
         ) as span:
@@ -226,6 +235,9 @@ def _wrap_close(active_connections):
 
     @wraps(original_close)
     def close(self):
+        if not is_instrumentation_enabled():
+            return original_close(self)
+
         result = original_close(self)
         _add_used_to_connection_usage(self, active_connections, -1)
         return result
