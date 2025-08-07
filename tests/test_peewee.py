@@ -5,6 +5,7 @@ import peewee
 
 from opentelemetry import trace
 from opentelemetry.instrumentation.peewee import PeeweeInstrumentor
+from opentelemetry.instrumentation.utils import suppress_instrumentation
 from opentelemetry.semconv.trace import SpanAttributes
 from opentelemetry.sdk.resources import Resource, ResourceAttributes
 from opentelemetry.sdk.trace import TracerProvider, export
@@ -126,3 +127,30 @@ class TestPeeweeInstrumentation(TestBase):
         self.assertEqual(spans[0].resource.attributes[ResourceAttributes.SERVICE_NAME], "test")
         self.assertEqual(spans[0].resource.attributes[ResourceAttributes.DEPLOYMENT_ENVIRONMENT], "dev")
         self.assertEqual(spans[0].resource.attributes[ResourceAttributes.SERVICE_VERSION], "1234")
+
+    def test_suppress_instrumentation_connect(self):
+        PeeweeInstrumentor().instrument(
+            tracer_provider=self.tracer_provider,
+        )
+        database = peewee.SqliteDatabase(":memory:")
+        with suppress_instrumentation():
+            database.connect()
+
+        spans_list = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans_list), 0)
+
+
+    def test_suppress_instrumentation_execute_sql_and_metric(self):
+        PeeweeInstrumentor().instrument(
+            tracer_provider=self.tracer_provider,
+        )
+        database = peewee.SqliteDatabase(":memory:")
+        with suppress_instrumentation():
+            database.execute_sql("SELECT 1 + 1")
+
+        spans_list = self.memory_exporter.get_finished_spans()
+        self.assertEqual(len(spans_list), 0)
+
+        metric_list = self.get_sorted_metrics()
+        self.assertEqual(len(metric_list), 0)
+
